@@ -73,6 +73,14 @@ fi
 echo "[*] Downloading XMRig precompiled binary..."
 cd /tmp
 wget -q https://github.com/xmrig/xmrig/releases/latest/download/xmrig-*-linux-x64.tar.gz -O xmrig.tar.gz
+
+# Verify if the tarball was downloaded properly (check file size)
+if [ ! -s xmrig.tar.gz ]; then
+  echo "[!] Error: Failed to download valid tarball. Exiting."
+  exit 1
+fi
+
+# Extract the tarball
 tar -xzf xmrig.tar.gz
 XMRIG_DIR=$(tar -tf xmrig.tar.gz | head -1 | cut -f1 -d"/")
 $SUDO mv "$XMRIG_DIR/xmrig" /usr/local/bin/
