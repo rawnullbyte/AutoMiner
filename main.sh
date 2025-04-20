@@ -27,32 +27,30 @@ else
   exit 1
 fi
 
-# Install dependencies
-echo "[*] Installing dependencies ($PKG_MGR)..."
+# Install dependencies for running precompiled binary
+echo "[*] Installing required runtime libraries ($PKG_MGR)..."
 case $PKG_MGR in
   "apt")
-    sudo apt update && sudo apt install -y git build-essential cmake libuv1-dev libssl-dev libhwloc-dev
+    sudo apt update && sudo apt install -y libhwloc-dev libssl-dev
     ;;
   "dnf"|"yum")
-    sudo $PKG_MGR install -y git cmake gcc gcc-c++ libuv-devel openssl-devel hwloc-devel
+    sudo $PKG_MGR install -y hwloc openssl
     ;;
   "pacman")
-    sudo pacman -Sy --noconfirm git cmake gcc libuv openssl hwloc
+    sudo pacman -Sy --noconfirm hwloc openssl
     ;;
 esac
 
-# Clone & compile XMRig
-echo "[*] Downloading and compiling XMRig..."
-git clone https://github.com/xmrig/xmrig.git /tmp/xmrig
-mkdir /tmp/xmrig/build
-cd /tmp/xmrig/build
-cmake .. -DCMAKE_BUILD_TYPE=Release -DWITH_OPENCL=OFF -DWITH_CUDA=OFF
-make -j$(nproc)
+# Download precompiled XMRig binary
+echo "[*] Downloading latest precompiled XMRig binary..."
+cd /tmp
+wget -q https://github.com/xmrig/xmrig/releases/latest/download/xmrig-*-linux-x64.tar.gz -O xmrig.tar.gz
 
-# Install binary globally
-sudo mv xmrig /usr/local/bin/
-cd ~
-rm -rf /tmp/xmrig
+echo "[*] Extracting XMRig..."
+tar -xzf xmrig.tar.gz
+XMRIG_DIR=$(tar -tf xmrig.tar.gz | head -1 | cut -f1 -d"/")
+sudo mv "$XMRIG_DIR/xmrig" /usr/local/bin/
+rm -rf xmrig.tar.gz "$XMRIG_DIR"
 
 # NanoPool-specific config (with SSL/TLS)
 echo "[*] Generating NanoPool config file..."
