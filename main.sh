@@ -64,7 +64,7 @@ esac
 # Download and install XMRig
 echo "[*] Downloading XMRig precompiled binary..."
 cd /tmp
-wget -q --show-progress https://github.com/xmrig/xmrig/releases/latest/download/xmrig-*-linux-x64.tar.gz -O xmrig.tar.gz
+wget -q --show-progress https://github.com/xmrig/xmrig/releases/download/v6.22.2/xmrig-6.22.2-linux-static-x64.tar.gz -O xmrig.tar.gz
 
 # Check if the download was successful
 if [ ! -s xmrig.tar.gz ]; then
@@ -131,7 +131,7 @@ Description=XMRig NanoPool Miner
 After=network.target
 
 [Service]
-ExecStart=/usr/local/bin/xmrig -c /etc/xmrig.conf
+ExecStart=/usr/local/bin/xmrig -c /etc/xmrig.conff
 Restart=always
 Nice=-20
 CPUWeight=100
