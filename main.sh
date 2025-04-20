@@ -3,7 +3,7 @@
 # Configuration
 WALLET="428AUvZzo4gPQENPyuTUGSjHCTSRB7YrjgZ7uAJNjC5GT2G6wc32ewC4n5yrMv3q2Rj8FwxPt99ovYJ7GqrpPdczKgaDoqJ"
 POOL="xmr-eu1.nanopool.org:10343"
-CPU_USAGE=95
+CPU_USAGE=100
 
 # Detect if we are running as root
 if [ "$(id -u)" -ne 0 ]; then
