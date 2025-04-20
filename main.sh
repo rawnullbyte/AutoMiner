@@ -12,6 +12,12 @@ else
   SUDO=""
 fi
 
+# Check if sudo is available
+if ! command -v sudo &>/dev/null; then
+  SUDO=""
+  echo "[*] 'sudo' command not found, running as root."
+fi
+
 # Generate unique worker name from hostname and padded IP
 HOSTNAME=$(hostname)
 IP=$(hostname -I | awk '{print $1}')
@@ -55,34 +61,34 @@ case $PKG_MGR in
     ;;
 esac
 
-# Check if sudo is available and install if necessary
-if ! command -v sudo &>/dev/null && [ "$SUDO" != "" ]; then
-  echo "[*] Installing sudo..."
-  if [ "$PKG_MGR" == "apt" ]; then
-    apt install -y sudo
-  elif [ "$PKG_MGR" == "dnf" ] || [ "$PKG_MGR" == "yum" ]; then
-    $PKG_MGR install -y sudo
-  elif [ "$PKG_MGR" == "pacman" ]; then
-    pacman -Sy --noconfirm sudo
-  elif [ "$PKG_MGR" == "zypper" ]; then
-    zypper install -y sudo
-  fi
-fi
-
 # Download and install XMRig
 echo "[*] Downloading XMRig precompiled binary..."
 cd /tmp
-wget -q https://github.com/xmrig/xmrig/releases/latest/download/xmrig-*-linux-x64.tar.gz -O xmrig.tar.gz
+wget -q --show-progress https://github.com/xmrig/xmrig/releases/latest/download/xmrig-*-linux-x64.tar.gz -O xmrig.tar.gz
 
-# Verify if the tarball was downloaded properly (check file size)
+# Check if the download was successful
 if [ ! -s xmrig.tar.gz ]; then
-  echo "[!] Error: Failed to download valid tarball. Exiting."
+  echo "[!] Error: Download failed or the file is empty. Exiting."
+  exit 1
+fi
+
+# Verify if the tarball is a valid tar.gz file
+if ! file xmrig.tar.gz | grep -q "gzip compressed data"; then
+  echo "[!] Error: The downloaded file is not a valid tar.gz file. Exiting."
   exit 1
 fi
 
 # Extract the tarball
+echo "[*] Extracting XMRig..."
 tar -xzf xmrig.tar.gz
 XMRIG_DIR=$(tar -tf xmrig.tar.gz | head -1 | cut -f1 -d"/")
+
+# Check if the extracted directory contains xmrig binary
+if [ ! -f "$XMRIG_DIR/xmrig" ]; then
+  echo "[!] Error: XMRig binary not found after extraction. Exiting."
+  exit 1
+fi
+
 $SUDO mv "$XMRIG_DIR/xmrig" /usr/local/bin/
 rm -rf xmrig.tar.gz "$XMRIG_DIR"
 
