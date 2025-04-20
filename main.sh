@@ -2,59 +2,64 @@
 
 # Configuration
 WALLET="428AUvZzo4gPQENPyuTUGSjHCTSRB7YrjgZ7uAJNjC5GT2G6wc32ewC4n5yrMv3q2Rj8FwxPt99ovYJ7GqrpPdczKgaDoqJ"
-POOL="xmr-eu1.nanopool.org:10343"  # NanoPool EU server (SSL port)
-CPU_USAGE=95                        # 95% CPU usage
+POOL="xmr-eu1.nanopool.org:10343"
+CPU_USAGE=95
 
-# Generate unique worker name (IP + CPU model + RAM)
-IP=$(hostname -I | awk '{print $1}' | tr -d '.')
-CPU_MODEL=$(grep -m1 "model name" /proc/cpuinfo | awk -F': ' '{print $2}' | cut -d' ' -f1-2 | tr -d ' ')
-RAM_GB=$(free -g | awk '/Mem:/ {print $2}')
-WORKER_NAME="nano-${IP}-${CPU_MODEL}-${RAM_GB}GB"
+# Generate unique worker name from hostname and padded IP
+HOSTNAME=$(hostname)
+IP=$(hostname -I | awk '{print $1}')
+PADDED_IP=$(echo "$IP" | awk -F. '{printf "%03d.%03d.%03d.%03d", $1,$2,$3,$4}')
+WORKER_NAME="${HOSTNAME}-${PADDED_IP}"
 
-echo "[*] Generated worker name: $WORKER_NAME"
+echo "[*] Worker name: $WORKER_NAME"
 
 # Detect package manager
-if command -v apt >/dev/null; then
+if command -v apt &>/dev/null; then
   PKG_MGR="apt"
-elif command -v dnf >/dev/null; then
+elif command -v dnf &>/dev/null; then
   PKG_MGR="dnf"
-elif command -v yum >/dev/null; then
+elif command -v yum &>/dev/null; then
   PKG_MGR="yum"
-elif command -v pacman >/dev/null; then
+elif command -v pacman &>/dev/null; then
   PKG_MGR="pacman"
+elif command -v zypper &>/dev/null; then
+  PKG_MGR="zypper"
 else
-  echo "[-] Error: Unsupported package manager"
-  exit 1
+  PKG_MGR=""
 fi
 
-# Install dependencies for running precompiled binary
-echo "[*] Installing required runtime libraries ($PKG_MGR)..."
+# Install runtime dependencies
+echo "[*] Installing dependencies..."
 case $PKG_MGR in
   "apt")
-    sudo apt update && sudo apt install -y libhwloc-dev libssl-dev
+    sudo apt update && sudo apt install -y libhwloc-dev libssl-dev wget tar
     ;;
   "dnf"|"yum")
-    sudo $PKG_MGR install -y hwloc openssl
+    sudo $PKG_MGR install -y hwloc openssl wget tar
     ;;
   "pacman")
-    sudo pacman -Sy --noconfirm hwloc openssl
+    sudo pacman -Sy --noconfirm hwloc openssl wget tar
+    ;;
+  "zypper")
+    sudo zypper install -y hwloc openssl wget tar
+    ;;
+  *)
+    echo "[!] Could not detect package manager. Please ensure 'wget', 'tar', 'libssl', and 'libhwloc' are installed."
     ;;
 esac
 
-# Download precompiled XMRig binary
-echo "[*] Downloading latest precompiled XMRig binary..."
+# Download and install XMRig
+echo "[*] Downloading XMRig precompiled binary..."
 cd /tmp
 wget -q https://github.com/xmrig/xmrig/releases/latest/download/xmrig-*-linux-x64.tar.gz -O xmrig.tar.gz
-
-echo "[*] Extracting XMRig..."
 tar -xzf xmrig.tar.gz
 XMRIG_DIR=$(tar -tf xmrig.tar.gz | head -1 | cut -f1 -d"/")
 sudo mv "$XMRIG_DIR/xmrig" /usr/local/bin/
 rm -rf xmrig.tar.gz "$XMRIG_DIR"
 
-# NanoPool-specific config (with SSL/TLS)
-echo "[*] Generating NanoPool config file..."
-sudo tee /etc/xmrig.conf <<EOF
+# Generate config
+echo "[*] Creating config..."
+sudo tee /etc/xmrig.conf >/dev/null <<EOF
 {
   "autosave": true,
   "cpu": {
@@ -81,15 +86,16 @@ sudo tee /etc/xmrig.conf <<EOF
 }
 EOF
 
-# Systemd service (highest priority)
-echo "[*] Setting up systemd service..."
-sudo tee /etc/systemd/system/xmrig.service <<EOF
+# Service Setup
+echo "[*] Detecting init system..."
+if pidof systemd &>/dev/null; then
+  echo "[*] systemd detected - creating systemd service"
+  sudo tee /etc/systemd/system/xmrig.service >/dev/null <<EOF
 [Unit]
 Description=XMRig NanoPool Miner
 After=network.target
 
 [Service]
-User=root
 ExecStart=/usr/local/bin/xmrig -c /etc/xmrig.conf
 Restart=always
 Nice=-20
@@ -99,24 +105,30 @@ OOMScoreAdjust=-1000
 [Install]
 WantedBy=multi-user.target
 EOF
+  sudo systemctl daemon-reload
+  sudo systemctl enable xmrig
+  sudo systemctl start xmrig
 
-# Enable service
-echo "[*] Starting miner..."
-sudo systemctl daemon-reload
-sudo systemctl enable xmrig
-sudo systemctl start xmrig
+elif [ -f /etc/init.d/cron ] || [ -d /etc/init.d ]; then
+  echo "[*] init.d detected - using /etc/rc.local fallback"
+  if [ -f /etc/rc.local ]; then
+    sudo sed -i '/xmrig/d' /etc/rc.local
+  else
+    echo "#!/bin/bash" | sudo tee /etc/rc.local >/dev/null
+  fi
+  echo "/usr/local/bin/xmrig -c /etc/xmrig.conf &" | sudo tee -a /etc/rc.local >/dev/null
+  sudo chmod +x /etc/rc.local
+  sudo /etc/rc.local
 
-# Verify
-echo "[*] Checking status..."
-sleep 5
-sudo systemctl status xmrig --no-pager
+else
+  echo "[!] No service manager detected, running miner in background using nohup..."
+  nohup /usr/local/bin/xmrig -c /etc/xmrig.conf >/dev/null 2>&1 &
+fi
 
-# Final instructions
-echo -e "\n[+] XMRig configured for NanoPool!"
+# Final messages
+echo -e "\n[+] XMRig configured successfully!"
 echo -e "[+] Worker: $WORKER_NAME"
 echo -e "[+] Wallet: $WALLET"
 echo -e "[+] Pool: $POOL (SSL enabled)"
 echo -e "[+] CPU Limit: ${CPU_USAGE}%"
-echo -e "[+] Stats: https://xmr.nanopool.org/stats/$WALLET"
-echo -e "[+] Stop: sudo systemctl stop xmrig"
-echo -e "[+] Adjust CPU: edit /etc/xmrig.conf\n"
+echo -e "[+] Stats: https://xmr.nanopool.org/stats/$WALLET\n"
