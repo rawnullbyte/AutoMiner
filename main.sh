@@ -131,7 +131,7 @@ Description=XMRig NanoPool Miner
 After=network.target
 
 [Service]
-ExecStart=/usr/local/bin/xmrig -c /etc/xmrig.conff
+ExecStart=/usr/local/bin/xmrig -c /etc/xmrig.conf
 Restart=always
 Nice=-20
 CPUWeight=100
